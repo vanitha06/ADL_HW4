@@ -152,7 +152,37 @@ def extract_kart_objects(
         - is_center_kart: Boolean indicating if this is the kart closest to image center
     """
 
-    raise NotImplementedError("Not implemented")
+    import json
+    
+    with open(info_path, 'r') as f:
+        data = json.load(f)
+
+    # Access the specific view (camera) data
+    # In SuperTuxKart info files, 'views' is typically a list of camera perspectives
+    karts = data.get('karts', [])
+    
+    visible_karts = []
+    
+    for kart in karts:
+        # Get the 2D center coordinates (x, y)
+        # Note: Ensure these keys match the actual structure of your info.json
+        pos = kart.get('pos') # Expected to be [x, y]
+        
+        if pos is None:
+            continue
+            
+        x, y = pos
+        
+        # Check if the kart's center is within the image frame
+        if 0 <= x < img_width and 0 <= y < img_height:
+            visible_karts.append({
+                "instance_id": kart.get("instance_id"),
+                "kart_name": kart.get("kart_name"),
+                "center": (x, y),
+                "is_center_kart": kart.get("is_center_kart", False)
+            })
+            
+    return visible_karts
 
 
 def extract_track_info(info_path: str) -> str:
@@ -166,7 +196,16 @@ def extract_track_info(info_path: str) -> str:
         Track name as a string
     """
 
-    raise NotImplementedError("Not implemented")
+    import json
+    
+    with open(info_path, 'r') as f:
+        data = json.load(f)
+
+    # The track_id is a top-level key in the SuperTuxKart info.json files
+    # common values include 'cocoa_temple', 'gran_paradiso_island', etc.
+    track_id = data.get('track_id', 'unknown_track')
+    
+    return track_id
 
 
 def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img_height: int = 100) -> list:
@@ -202,7 +241,69 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
     # How many karts are in front of the ego car?
     # How many karts are behind the ego car?
 
-    raise NotImplementedError("Not implemented")
+    questions = []
+    
+    # 1. Extract the data using your previously implemented functions
+    karts = extract_kart_objects(info_path, view_index, img_width, img_height)
+    track_id = extract_track_info(info_path)
+    
+    # Find the ego car (the one the camera is attached to/centered on)
+    ego_kart = next((k for k in karts if k['is_center_kart']), None)
+
+    # --- 1. Ego car question ---
+    if ego_kart:
+        questions.append({
+            "question": "What kart is the ego car?",
+            "answer": ego_kart['kart_name']
+        })
+
+    # --- 2. Total karts question ---
+    questions.append({
+        "question": "How many karts are there in the scenario?",
+        "answer": str(len(karts))
+    })
+
+    # --- 3. Track information question ---
+    questions.append({
+        "question": "What track is this?",
+        "answer": track_id
+    })
+
+    # --- 4. Relative position & 5. Counting (Left/Right) ---
+    if ego_kart:
+        ego_x = ego_kart['center'][0]
+        karts_to_the_left = 0
+        karts_to_the_right = 0
+
+        for kart in karts:
+            if kart['is_center_kart']:
+                continue
+            
+            kart_x = kart['center'][0]
+            rel_pos = "left" if kart_x < ego_x else "right"
+            
+            # Question 4: Specific relative position
+            questions.append({
+                "question": f"Is {kart['kart_name']} to the left or right of the ego car?",
+                "answer": rel_pos
+            })
+            
+            if rel_pos == "left":
+                karts_to_the_left += 1
+            else:
+                karts_to_the_right += 1
+
+        # Question 5: Counting relative positions
+        questions.append({
+            "question": "How many karts are to the left of the ego car?",
+            "answer": str(karts_to_the_left)
+        })
+        questions.append({
+            "question": "How many karts are to the right of the ego car?",
+            "answer": str(karts_to_the_right)
+        })
+
+    return questions
 
 
 def check_qa_pairs(info_file: str, view_index: int):
