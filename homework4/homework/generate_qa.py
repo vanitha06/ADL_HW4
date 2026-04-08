@@ -365,16 +365,16 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
             "question": "How many karts are to the right of the ego car?",
             "answer": str(karts_to_the_right)
         })
-        # Question 1: Is {kart_name} in front of or behind the ego car?
+        # Question 6: Is {kart_name} in front of or behind the ego car?
         questions.append({
             "question": f"Is {name} in front of or behind the ego car?",
-            "answer": f"{name} is {rel_pos_y} of the ego car."
+            "answer": f"{rel_pos_y}"
         })
 
-        # Question 2: Where is {kart_name} relative to the ego car?
+        # Question 7: Where is {kart_name} relative to the ego car?
         questions.append({
             "question": f"Where is {name} relative to the ego car?",
-            "answer": f"{name} is {rel_pos_y} and to the {rel_pos_x} of the ego car."
+            "answer": f"{rel_pos_y} and {rel_pos_x}"
         })
 
     return questions
