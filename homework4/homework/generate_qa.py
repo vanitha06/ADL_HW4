@@ -164,44 +164,84 @@ def extract_kart_objects(
     kart_names = data.get('karts', [])
     detections = data.get('detections',[])
     
-    visible_karts = []
+    candidate_karts = []
+
+    # 1. Setup Scaling (Match draw_detections logic)
+    # Original STK resolution is 600x400
+    scale_x = img_width / ORIGINAL_WIDTH
+    scale_y = img_height / ORIGINAL_HEIGHT
+    
+    # Define the absolute center of the image frame
+    img_center_x = img_width / 2
+    img_center_y = img_height / 2
     
     for det in detections:
       for act_det in det:
-        # Get the 2D center coordinates (x, y)
-        # Note: Ensure these keys match the actual structure of your info.json
-        class_id, obj_id, x1, y1, x2, y2 = act_det
-        class_id = int(class_id)
-        obj_id = int(obj_id)
-        print("act_det",act_det)
-        print("class,obj_ids:",class_id, obj_id)
-        if class_id != 1:
-            continue
-        # Check if the kart's center is within the image frame
-        raw_center_x = (x1 + x2) / 2
-        raw_center_y = (y1 + y2) / 2
+    #     # Get the 2D center coordinates (x, y)
+    #     # Note: Ensure these keys match the actual structure of your info.json
+    #     class_id, obj_id, x1, y1, x2, y2 = act_det
+    #     class_id = int(class_id)
+    #     obj_id = int(obj_id)
+    #     print("act_det",act_det)
+    #     print("class,obj_ids:",class_id, obj_id)
+    #     if class_id != 1:
+    #         continue
+    #     # Check if the kart's center is within the image frame
+    #     raw_center_x = (x1 + x2) / 2
+    #     raw_center_y = (y1 + y2) / 2
 
-        # 2. Apply scaling factors 
-        # (e.g., 150 / 600 = 0.25)
-        scale_x = img_width / ORIGINAL_WIDTH
-        scale_y = img_height / ORIGINAL_HEIGHT
-        scaled_center_x = raw_center_x * scale_x
-        scaled_center_y = raw_center_y * scale_y
-        is_center_kart = False
-        # 3. Check bounds against the RESIZED frame
-        if 0 <= scaled_center_x < img_width and 0 <= scaled_center_y < img_height:
-            name = kart_names[obj_id] if obj_id < len(kart_names) else f"kart_{kart_id}"
-            if scaled_center_x == img_width/2 and scaled_center_y == img_height/2:
-              is_center_kart = True
-            print(obj_id,name,scaled_center_x,scaled_center_y,is_center_kart)  
-            visible_karts.append({
-                "instance_id": obj_id,
-                "kart_name": name,
-                "center": (scaled_center_x, scaled_center_y),
-                "is_center_kart": is_center_kart
-            })
+    #     # 2. Apply scaling factors 
+    #     # (e.g., 150 / 600 = 0.25)
+    #     scale_x = img_width / ORIGINAL_WIDTH
+    #     scale_y = img_height / ORIGINAL_HEIGHT
+    #     scaled_center_x = raw_center_x * scale_x
+    #     scaled_center_y = raw_center_y * scale_y
+    #     is_center_kart = False
+    #     # 3. Check bounds against the RESIZED frame
+    #     if 0 <= scaled_center_x < img_width and 0 <= scaled_center_y < img_height:
+    #         name = kart_names[obj_id] if obj_id < len(kart_names) else f"kart_{kart_id}"
+    #         if scaled_center_x == img_width/2 and scaled_center_y == img_height/2:
+    #           is_center_kart = True
+    #         print(obj_id,name,scaled_center_x,scaled_center_y,is_center_kart)  
+    #         visible_karts.append({
+    #             "instance_id": obj_id,
+    #             "kart_name": name,
+    #             "center": (scaled_center_x, scaled_center_y),
+    #             "is_center_kart": is_center_kart
+    #         })
             
-    return visible_karts
+            # return visible_karts
+            obj_type, kart_id, x1, y1, x2, y2 = act_det
+                
+                # Only process Karts (Type 1)
+            if obj_type == 1:
+                # Calculate scaled center points (round to match pixel-based drawing if needed)
+                # Center = (x1 + x2) / 2, then scaled
+                cx = ((x1 + x2) / 2) * scale_x
+                cy = ((y1 + y2) / 2) * scale_y
+                    
+                # Check if kart is in sight (within frame boundaries)
+                if 0 <= cx < img_width and 0 <= cy < img_height:
+                    # Calculate Euclidean distance to image center
+                    dist = np.sqrt((cx - img_center_x)**2 + (cy - img_center_y)**2)
+                        
+                    candidate_karts.append({
+                            "instance_id": kart_id,
+                            "kart_name": kart_names[kart_id] if kart_id < len(kart_names) else f"kart_{kart_id}",
+                            "center": (cx, cy),
+                            "dist_to_center": dist,
+                            "is_center_kart": False # Placeholder
+                        })
+
+    if not candidate_karts:
+        return []
+
+    # 3. Second Pass: Identify the Ego/Center Kart
+    # The kart closest to the physical center of the image is the "ego"
+    ego_kart = min(candidate_karts, key=lambda k: k["dist_to_center"])
+    ego_kart["is_center_kart"] = True
+
+    return candidate_karts
 
 
 def extract_track_info(info_path: str) -> str:
