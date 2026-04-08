@@ -175,8 +175,9 @@ def extract_kart_objects(
     img_center_x = img_width / 2
     img_center_y = img_height / 2
     
-    for det in detections:
-      for act_det in det:
+    detection_view_index = detections[view_index]
+    for act_det in detection_view_index:
+      # for act_det in det:
     #     # Get the 2D center coordinates (x, y)
     #     # Note: Ensure these keys match the actual structure of your info.json
     #     class_id, obj_id, x1, y1, x2, y2 = act_det
