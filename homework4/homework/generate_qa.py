@@ -331,23 +331,26 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
     # --- 4. Relative position & 5. Counting (Left/Right) ---
     if ego_kart:
         ego_x = ego_kart['center'][0]
+        ego_y = ego_kart['center'][1]
         karts_to_the_left = 0
         karts_to_the_right = 0
 
         for kart in karts:
             if kart['is_center_kart']:
                 continue
-            
+            name = kart['kart_name']
             kart_x = kart['center'][0]
-            rel_pos = "left" if kart_x < ego_x else "right"
+            kart_y = kart['center'][1]
+            rel_pos_x = "left" if kart_x < ego_x else "right"
+            rel_pos_y = "front" if kart_y < ego_y else "behind"
             
             # Question 4: Specific relative position
             questions.append({
                 "question": f"Is {kart['kart_name']} to the left or right of the ego car?",
-                "answer": rel_pos
+                "answer": rel_pos_x
             })
             
-            if rel_pos == "left":
+            if rel_pos_x == "left":
                 karts_to_the_left += 1
             else:
                 karts_to_the_right += 1
@@ -360,6 +363,17 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
         questions.append({
             "question": "How many karts are to the right of the ego car?",
             "answer": str(karts_to_the_right)
+        })
+        # Question 1: Is {kart_name} in front of or behind the ego car?
+        questions.append({
+            "question": f"Is {name} in front of or behind the ego car?",
+            "answer": f"{name} is {rel_pos_y} of the ego car."
+        })
+
+        # Question 2: Where is {kart_name} relative to the ego car?
+        questions.append({
+            "question": f"Where is {name} relative to the ego car?",
+            "answer": f"{name} is {rel_pos_y} and to the {rel_pos_x} of the ego car."
         })
 
     return questions
