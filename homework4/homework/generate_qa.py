@@ -159,27 +159,46 @@ def extract_kart_objects(
 
     # Access the specific view (camera) data
     # In SuperTuxKart info files, 'views' is typically a list of camera perspectives
-    karts = data.get('karts', [])
+    # karts = data.get('karts', [])
+    track = data.get('track', 'unknown_track')
+    kart_names = data.get('karts', [])
+    detections = data.get('detections',[])
     
     visible_karts = []
     
-    for kart in karts:
+    for det in detections:
+      for act_det in det:
         # Get the 2D center coordinates (x, y)
         # Note: Ensure these keys match the actual structure of your info.json
-        pos = kart.get('pos') # Expected to be [x, y]
-        
-        if pos is None:
+        class_id, obj_id, x1, y1, x2, y2 = act_det
+        class_id = int(class_id)
+        obj_id = int(obj_id)
+        print("act_det",act_det)
+        print("class,obj_ids:",class_id, obj_id)
+        if class_id != 1:
             continue
-            
-        x, y = pos
-        
         # Check if the kart's center is within the image frame
-        if 0 <= x < img_width and 0 <= y < img_height:
+        raw_center_x = (x1 + x2) / 2
+        raw_center_y = (y1 + y2) / 2
+
+        # 2. Apply scaling factors 
+        # (e.g., 150 / 600 = 0.25)
+        scale_x = img_width / ORIGINAL_WIDTH
+        scale_y = img_height / ORIGINAL_HEIGHT
+        scaled_center_x = raw_center_x * scale_x
+        scaled_center_y = raw_center_y * scale_y
+        is_center_kart = False
+        # 3. Check bounds against the RESIZED frame
+        if 0 <= scaled_center_x < img_width and 0 <= scaled_center_y < img_height:
+            name = kart_names[obj_id] if obj_id < len(kart_names) else f"kart_{kart_id}"
+            if scaled_center_x == img_width/2 and scaled_center_y == img_height/2:
+              is_center_kart = True
+            print(obj_id,name,scaled_center_x,scaled_center_y,is_center_kart)  
             visible_karts.append({
-                "instance_id": kart.get("instance_id"),
-                "kart_name": kart.get("kart_name"),
-                "center": (x, y),
-                "is_center_kart": kart.get("is_center_kart", False)
+                "instance_id": obj_id,
+                "kart_name": name,
+                "center": (scaled_center_x, scaled_center_y),
+                "is_center_kart": is_center_kart
             })
             
     return visible_karts
@@ -203,9 +222,9 @@ def extract_track_info(info_path: str) -> str:
 
     # The track_id is a top-level key in the SuperTuxKart info.json files
     # common values include 'cocoa_temple', 'gran_paradiso_island', etc.
-    track_id = data.get('track_id', 'unknown_track')
+    track = data.get('track', 'unknown_track')
     
-    return track_id
+    return track
 
 
 def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img_height: int = 100) -> list:
@@ -327,6 +346,8 @@ def check_qa_pairs(info_file: str, view_index: int):
     plt.imshow(annotated_image)
     plt.axis("off")
     plt.title(f"Frame {extract_frame_info(str(image_file))[0]}, View {view_index}")
+    plt.imsave("debug_output.png", annotated_image) 
+    print("Image saved as debug_output.png - check the files sidebar!")
     plt.show()
 
     # Generate QA pairs
