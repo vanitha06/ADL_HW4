@@ -154,12 +154,10 @@ def extract_kart_objects(
         - center: (x, y) coordinates of the kart's center
         - is_center_kart: Boolean indicating if this is the kart closest to image center
     """
-
-    import json
     
     with open(info_path, 'r') as f:
         data = json.load(f)
-
+    print("info file path in extract kart info:",info_path)
     # Access the specific view (camera) data
     # In SuperTuxKart info files, 'views' is typically a list of camera perspectives
     # karts = data.get('karts', [])
@@ -244,7 +242,7 @@ def extract_kart_objects(
     # The kart closest to the physical center of the image is the "ego"
     ego_kart = min(candidate_karts, key=lambda k: k["dist_to_center"])
     ego_kart["is_center_kart"] = True
-
+    print("ego_kart",ego_kart)
     return candidate_karts
 
 
@@ -349,6 +347,7 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
     
     # 1. Extract the data using your previously implemented functions
     karts = extract_kart_objects(info_path, view_index, img_width, img_height)
+    print("----karts:----",karts)
     track_id = extract_track_info(info_path)
     
     # Find the ego car (the one the camera is attached to/centered on)
@@ -557,7 +556,7 @@ You probably need to add additional commands to Fire below.
 
 def main():
     fire.Fire({"check": check_qa_pairs,
-    "generate_qa_all": process_training_dataset,})
+    "generate_qa_all": generate_qa_all,})
    
 
 
