@@ -376,9 +376,10 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
     })
 
     # Get data from our helper
-    spatial_data, counts = get_spatial_and_count_info(karts, ego_kart)
+    if len(karts) > 0:
+     spatial_data, counts = get_spatial_and_count_info(karts, ego_kart)
 
-    for data in spatial_data:
+     for data in spatial_data:
         name = data['name']
         v_rel = data['v_rel']
         h_rel = data['h_rel']
@@ -405,13 +406,15 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
         })
 
     # 4. Counting questions (using the counts dictionary from our helper)
-    for direction, count in counts.items():
+     for direction, count in counts.items():
         label = "to the " + direction if direction in ["left", "right"] else direction
         questions.append({
             "question": f"How many karts are {label} of the ego car?",
             "answer": f"There are {count} karts {label} of the ego car.",
             "image_file": image_file
         })
+    else:
+      print("No karts found:",image_file)    
 
     # --- 4. Relative position & 5. Counting (Left/Right) ---
     # if ego_kart:
@@ -495,7 +498,7 @@ def generate_qa_all(data_dir: str = 'data/train'):
             # 5. Append the resulting list of pairs if it's not empty
             if qa_list:
                 all_qa_pairs.extend(qa_list)
-
+    print("count of qa pairs:",len(all_qa_pairs))
     # 6. Define the target output path
     output_path = os.path.join(data_dir, 'generated_qa_pairs.json')
     
