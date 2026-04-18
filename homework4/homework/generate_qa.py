@@ -217,6 +217,8 @@ def extract_kart_objects(
                 
                 # Only process Karts (Type 1)
             if obj_type == 1:
+                if (x2*scale_x - x1*scale_x) < 5 or (y2*scale_y - y1*scale_y) < 5:
+                  continue
                 # Calculate scaled center points (round to match pixel-based drawing if needed)
                 # Center = (x1 + x2) / 2, then scaled
                 cx = ((x1 + x2) / 2) * scale_x
@@ -407,12 +409,28 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
 
     # 4. Counting questions (using the counts dictionary from our helper)
      for direction, count in counts.items():
-        label = "to the " + direction if direction in ["left", "right"] else direction
-        questions.append({
+        if direction == "front":
+          label = "in " + direction
+          questions.append({
             "question": f"How many karts are {label} of the ego car?",
             "answer": f"{count}",
             "image_file": image_file
         })
+        elif direction == "back":
+          label = "behind" 
+          questions.append({
+            "question": f"How many karts are {label} the ego car?",
+            "answer": f"{count}",
+            "image_file": image_file
+        })
+        elif direction in ["left", "right"]:
+          label = "to the " + direction
+          questions.append({
+            "question": f"How many karts are {label} of the ego car?",
+            "answer": f"{count}",
+            "image_file": image_file
+        })
+ 
     else:
       print("No karts found:",image_file)    
 
@@ -564,6 +582,7 @@ def validate_qa_generation(generated_path='data/valid/generated_qa_pairs.json',
     print(f"Match Results:")
     print(f"✅ Matches: {matches}")
     print(f"❌ Mismatches: {len(mismatches)}")
+    print(f"Total val records count: {len(grade_data)}")
     print(f"❓ Extra/Unknown: {len(missing)}")
     print(f"📊 Accuracy: {accuracy:.2f}%")
     print("-" * 30)
@@ -574,6 +593,44 @@ def validate_qa_generation(generated_path='data/valid/generated_qa_pairs.json',
             print(f"Image: {m['image']}\nQ: {m['q']}\nExpected: {m['expected']}\nGot: {m['got']}\n")
 
     return accuracy
+
+def find_missing_from_generated(generated_path='data/valid/generated_qa_pairs.json', 
+                           grader_path='data/valid_grader/balanced_qa_pairs.json'):
+    # 1. Create a set of keys that exist in YOUR generated data
+    # We add 'valid/' here because we assume your gen_data doesn't have it, 
+    # but the grader data does.
+  
+
+     
+    with open(generated_path, 'r') as f:
+        gen_data = json.load(f)
+        
+    with open(grader_path, 'r') as f:
+        grade_data = json.load(f)
+
+    gen_keys = { (f"valid/{item['image_file']}", item['question']) for item in gen_data }
+
+    missing_pairs = []    
+
+    # 2. Loop through the GRADER'S data
+    for item in grade_data:
+        # The grader key is already (valid/00000_00_im.jpg, question)
+        grade_key = (item['image_file'], item['question'])
+        
+        # 3. If the grader has it but you don't, it's missing!
+        if grade_key not in gen_keys:
+            missing_pairs.append(item)
+
+    # 4. Report findings
+    print(f"Found {len(missing_pairs)} pairs in grader data that you are missing.")
+    
+    if missing_pairs:
+        print("\nExample of a missing pair:")
+        print(f"Image: {missing_pairs[0]['image_file']}")
+        print(f"Q: {missing_pairs[0]['question']}")
+        print(f"A: {missing_pairs[0]['answer']}")
+        
+    return missing_pairs    
 
 def check_qa_pairs(info_file: str, view_index: int):
     """
@@ -623,7 +680,8 @@ You probably need to add additional commands to Fire below.
 def main():
     fire.Fire({"check": check_qa_pairs,
     "generate_qa_all": generate_qa_all,
-    "validate_qa_generation":validate_qa_generation})
+    "validate_qa_generation":validate_qa_generation,
+    "find_missing_data":find_missing_from_generated})
    
 
 
