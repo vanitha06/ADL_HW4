@@ -281,7 +281,7 @@ def get_spatial_and_count_info(karts, ego_kart):
     Calculates relative positions and counts karts in each direction.
     """
     spatial_data = []
-    counts = {"front": 0, "behind": 0, "left": 0, "right": 0}
+    counts = {"front": 0, "back": 0, "left": 0, "right": 0}
     
     ego_x, ego_y = ego_kart['center']
 
@@ -292,7 +292,7 @@ def get_spatial_and_count_info(karts, ego_kart):
         kx, ky = kart['center']
 
         # Determine relative positions
-        v_rel = "front" if ky < ego_y else "behind"
+        v_rel = "front" if ky < ego_y else "back"
         h_rel = "left" if kx < ego_x else "right"
 
         # Update counts
@@ -387,21 +387,21 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
         # 1. Front/Behind specific question
         questions.append({
             "question": f"Is {name} in front of or behind the ego car?",
-            "answer": f"{name} is {v_rel} of the ego car.",
+            "answer": f"{v_rel}",
             "image_file": image_file
         })
 
         # 2. Left/Right specific question
         questions.append({
             "question": f"Is {name} to the left or right of the ego car?",
-            "answer": f"{name} is to the {h_rel} of the ego car.",
+            "answer": f"{h_rel}",
             "image_file": image_file
         })
 
         # 3. Combined relative position question
         questions.append({
             "question": f"Where is {name} relative to the ego car?",
-            "answer": f"{name} is {v_rel} and to the {h_rel} of the ego car.",
+            "answer": f"{v_rel} and {h_rel}",
             "image_file": image_file
         })
 
@@ -410,7 +410,7 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
         label = "to the " + direction if direction in ["left", "right"] else direction
         questions.append({
             "question": f"How many karts are {label} of the ego car?",
-            "answer": f"There are {count} karts {label} of the ego car.",
+            "answer": f"{count}",
             "image_file": image_file
         })
     else:
@@ -541,7 +541,8 @@ def validate_qa_generation(generated_path='data/valid/generated_qa_pairs.json',
 
     # 3. Compare generated data against reference
     for item in gen_data:
-        key = (item['image_file'], item['question'])
+        image_with_prefix = f"valid/{item['image_file']}"
+        key = (image_with_prefix, item['question'])
         
         if key in ref_lookup:
             if item['answer'].strip().lower() == ref_lookup[key].strip().lower():
@@ -569,7 +570,7 @@ def validate_qa_generation(generated_path='data/valid/generated_qa_pairs.json',
 
     if mismatches:
         print("\nFirst 3 Mismatches:")
-        for m in mismatches[:3]:
+        for m in mismatches[:25]:
             print(f"Image: {m['image']}\nQ: {m['q']}\nExpected: {m['expected']}\nGot: {m['got']}\n")
 
     return accuracy
