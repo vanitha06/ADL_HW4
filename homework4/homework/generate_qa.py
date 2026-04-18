@@ -5,6 +5,9 @@ import fire
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image, ImageDraw
+import os
+import glob
+import json
 
 # Define object type mapping
 OBJECT_TYPES = {
@@ -255,8 +258,6 @@ def extract_track_info(info_path: str) -> str:
     Returns:
         Track name as a string
     """
-
-    import json
     
     with open(info_path, 'r') as f:
         data = json.load(f)
@@ -267,6 +268,46 @@ def extract_track_info(info_path: str) -> str:
     
     return track
 
+def get_image_filename(info_path: str, view_index: int) -> str:
+    """
+    Converts 'data/train/00000_info.json' + 0 -> '00000_00_im.jpg'
+    """
+    # Extract '00000' from the path
+    base_id = os.path.basename(info_path).replace('_info.json', '')
+    
+    # Format the index as two digits and append the image suffix
+    return f"{base_id}_{view_index:02d}_im.jpg"    
+    
+def get_spatial_and_count_info(karts, ego_kart):
+    """
+    Calculates relative positions and counts karts in each direction.
+    """
+    spatial_data = []
+    counts = {"front": 0, "behind": 0, "left": 0, "right": 0}
+    
+    ego_x, ego_y = ego_kart['center']
+
+    for kart in karts:
+        if kart['is_center_kart']:
+            continue
+            
+        kx, ky = kart['center']
+
+        # Determine relative positions
+        v_rel = "front" if ky < ego_y else "behind"
+        h_rel = "left" if kx < ego_x else "right"
+
+        # Update counts
+        counts[v_rel] += 1
+        counts[h_rel] += 1
+
+        spatial_data.append({
+            "name": kart['kart_name'],
+            "v_rel": v_rel,
+            "h_rel": h_rel
+        })
+
+    return spatial_data, counts
 
 def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img_height: int = 100) -> list:
     """
@@ -302,6 +343,9 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
     # How many karts are behind the ego car?
 
     questions = []
+
+    # --- Derive the filename using the helper ---
+    image_file = get_image_filename(info_path, view_index)
     
     # 1. Extract the data using your previously implemented functions
     karts = extract_kart_objects(info_path, view_index, img_width, img_height)
@@ -314,70 +358,156 @@ def generate_qa_pairs(info_path: str, view_index: int, img_width: int = 150, img
     if ego_kart:
         questions.append({
             "question": "What kart is the ego car?",
-            "answer": ego_kart['kart_name']
+            "answer": ego_kart['kart_name'],
+            "image_file": image_file
         })
 
     # --- 2. Total karts question ---
     questions.append({
         "question": "How many karts are there in the scenario?",
-        "answer": str(len(karts))
+        "answer": str(len(karts)),
+        "image_file": image_file
     })
 
     # --- 3. Track information question ---
     questions.append({
         "question": "What track is this?",
-        "answer": track_id
+        "answer": track_id,
+        "image_file": image_file
     })
 
-    # --- 4. Relative position & 5. Counting (Left/Right) ---
-    if ego_kart:
-        ego_x = ego_kart['center'][0]
-        ego_y = ego_kart['center'][1]
-        karts_to_the_left = 0
-        karts_to_the_right = 0
+    # Get data from our helper
+    spatial_data, counts = get_spatial_and_count_info(karts, ego_kart)
 
-        for kart in karts:
-            if kart['is_center_kart']:
-                continue
-            name = kart['kart_name']
-            kart_x = kart['center'][0]
-            kart_y = kart['center'][1]
-            rel_pos_x = "left" if kart_x < ego_x else "right"
-            rel_pos_y = "front" if kart_y < ego_y else "behind"
-            
-            # Question 4: Specific relative position
-            questions.append({
-                "question": f"Is {kart['kart_name']} to the left or right of the ego car?",
-                "answer": rel_pos_x
-            })
-            
-            if rel_pos_x == "left":
-                karts_to_the_left += 1
-            else:
-                karts_to_the_right += 1
+    for data in spatial_data:
+        name = data['name']
+        v_rel = data['v_rel']
+        h_rel = data['h_rel']
 
-        # Question 5: Counting relative positions
-        questions.append({
-            "question": "How many karts are to the left of the ego car?",
-            "answer": str(karts_to_the_left)
-        })
-        questions.append({
-            "question": "How many karts are to the right of the ego car?",
-            "answer": str(karts_to_the_right)
-        })
-        # Question 6: Is {kart_name} in front of or behind the ego car?
+        # 1. Front/Behind specific question
         questions.append({
             "question": f"Is {name} in front of or behind the ego car?",
-            "answer": f"{rel_pos_y}"
+            "answer": f"{name} is {v_rel} of the ego car.",
+            "image_file": image_file
         })
 
-        # Question 7: Where is {kart_name} relative to the ego car?
+        # 2. Left/Right specific question
+        questions.append({
+            "question": f"Is {name} to the left or right of the ego car?",
+            "answer": f"{name} is to the {h_rel} of the ego car.",
+            "image_file": image_file
+        })
+
+        # 3. Combined relative position question
         questions.append({
             "question": f"Where is {name} relative to the ego car?",
-            "answer": f"{rel_pos_y} and {rel_pos_x}"
+            "answer": f"{name} is {v_rel} and to the {h_rel} of the ego car.",
+            "image_file": image_file
         })
 
+    # 4. Counting questions (using the counts dictionary from our helper)
+    for direction, count in counts.items():
+        label = "to the " + direction if direction in ["left", "right"] else direction
+        questions.append({
+            "question": f"How many karts are {label} of the ego car?",
+            "answer": f"There are {count} karts {label} of the ego car.",
+            "image_file": image_file
+        })
+
+    # --- 4. Relative position & 5. Counting (Left/Right) ---
+    # if ego_kart:
+    #     ego_x = ego_kart['center'][0]
+    #     ego_y = ego_kart['center'][1]
+    #     karts_to_the_left = 0
+    #     karts_to_the_right = 0
+
+    #     for kart in karts:
+    #         if kart['is_center_kart']:
+    #             continue
+    #         name = kart['kart_name']
+    #         kart_x = kart['center'][0]
+    #         kart_y = kart['center'][1]
+    #         rel_pos_x = "left" if kart_x < ego_x else "right"
+    #         rel_pos_y = "front" if kart_y < ego_y else "behind"
+            
+    #         # Question 4: Specific relative position
+    #         questions.append({
+    #             "question": f"Is {kart['kart_name']} to the left or right of the ego car?",
+    #             "answer": rel_pos_x
+    #         })
+            
+    #         if rel_pos_x == "left":
+    #             karts_to_the_left += 1
+    #         else:
+    #             karts_to_the_right += 1
+
+    #     # Question 5: Counting relative positions
+        # questions.append({
+        #     "question": "How many karts are to the left of the ego car?",
+        #     "answer": str(karts_to_the_left)
+        # })
+        # questions.append({
+        #     "question": "How many karts are to the right of the ego car?",
+        #     "answer": str(karts_to_the_right)
+        # })
+        # # Question 6: Is {kart_name} in front of or behind the ego car?
+        # questions.append({
+        #     "question": f"Is {name} in front of or behind the ego car?",
+        #     "answer": f"{rel_pos_y}"
+        # })
+
+        # # Question 7: Where is {kart_name} relative to the ego car?
+        # questions.append({
+        #     "question": f"Where is {name} relative to the ego car?",
+        #     "answer": f"{rel_pos_y} and {rel_pos_x}"
+        # })
+
     return questions
+
+
+def generate_qa_all(data_dir: str = 'data/train'):
+    """
+    Iterates through all info.json files in the directory and calls 
+    generate_qa_pairs for each of the 10 kart views.
+    """ 
+    all_qa_pairs = []
+    
+    # 1. Find all info files in the specified directory
+    # Using sorted() ensures the images are processed in numerical order
+    info_files = sorted(glob.glob(os.path.join(data_dir, "*_info.json")))
+    
+    print(f"Found {len(info_files)} info collections. Processing 10 views per file...")
+
+    # 2. Loop through each collection
+    for info_path in info_files:
+        
+        # 3. Each collection contains data for 10 karts (view_index 0-9)
+        for view_idx in range(10):
+            
+            # 4. Call generate_qa_pairs with the specified signature
+            # This function now handles extraction, spatial logic, and image_file naming
+            qa_list = generate_qa_pairs(
+                info_path=info_path, 
+                view_index=view_idx, 
+                img_width=150, 
+                img_height=100
+            )
+            
+            # 5. Append the resulting list of pairs if it's not empty
+            if qa_list:
+                all_qa_pairs.extend(qa_list)
+
+    # 6. Define the target output path
+    output_path = os.path.join(data_dir, 'generated_qa_pairs.json')
+    
+    # 7. Write the complete list to the JSON file
+    with open(output_path, 'w') as f:
+        json.dump(all_qa_pairs, f, indent=2)
+    
+    print(f"Done! Created {len(all_qa_pairs)} total records.")
+    print(f"File saved to: {output_path}")
+
+    return all_qa_pairs
 
 
 def check_qa_pairs(info_file: str, view_index: int):
@@ -426,7 +556,9 @@ You probably need to add additional commands to Fire below.
 
 
 def main():
-    fire.Fire({"check": check_qa_pairs})
+    fire.Fire({"check": check_qa_pairs,
+    "generate_qa_all": process_training_dataset,})
+   
 
 
 if __name__ == "__main__":
