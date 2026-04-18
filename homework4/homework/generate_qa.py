@@ -512,6 +512,68 @@ def generate_qa_all(data_dir: str = 'data/train'):
     return all_qa_pairs
 
 
+def validate_qa_generation(generated_path='data/valid/generated_qa_pairs.json', 
+                           grader_path='data/valid_grader/balanced_qa_pairs.json'):
+    """
+    Compares the generated QA pairs against the grader's reference file.
+    """
+    generate_qa_all('data/valid')
+    # 1. Load the files
+    if not os.path.exists(generated_path):
+        print(f"Error: Generated file not found at {generated_path}")
+        return
+    
+    with open(generated_path, 'r') as f:
+        gen_data = json.load(f)
+        
+    with open(grader_path, 'r') as f:
+        grade_data = json.load(f)
+
+    print(f"Comparing {len(gen_data)} generated pairs against {len(grade_data)} reference pairs...")
+
+    # 2. Create a lookup dictionary for the reference data
+    # Key: (image_file, question) -> Value: answer
+    ref_lookup = { (d['image_file'], d['question']): d['answer'] for d in grade_data }
+
+    matches = 0
+    mismatches = []
+    missing = []
+
+    # 3. Compare generated data against reference
+    for item in gen_data:
+        key = (item['image_file'], item['question'])
+        
+        if key in ref_lookup:
+            if item['answer'].strip().lower() == ref_lookup[key].strip().lower():
+                matches += 1
+            else:
+                mismatches.append({
+                    "image": item['image_file'],
+                    "q": item['question'],
+                    "expected": ref_lookup[key],
+                    "got": item['answer']
+                })
+        else:
+            missing.append(key)
+
+    # 4. Report Results
+    accuracy = (matches / len(grade_data)) * 100 if len(grade_data) > 0 else 0
+    
+    print("-" * 30)
+    print(f"Match Results:")
+    print(f"✅ Matches: {matches}")
+    print(f"❌ Mismatches: {len(mismatches)}")
+    print(f"❓ Extra/Unknown: {len(missing)}")
+    print(f"📊 Accuracy: {accuracy:.2f}%")
+    print("-" * 30)
+
+    if mismatches:
+        print("\nFirst 3 Mismatches:")
+        for m in mismatches[:3]:
+            print(f"Image: {m['image']}\nQ: {m['q']}\nExpected: {m['expected']}\nGot: {m['got']}\n")
+
+    return accuracy
+
 def check_qa_pairs(info_file: str, view_index: int):
     """
     Check QA pairs for a specific info file and view index.
@@ -559,7 +621,8 @@ You probably need to add additional commands to Fire below.
 
 def main():
     fire.Fire({"check": check_qa_pairs,
-    "generate_qa_all": generate_qa_all,})
+    "generate_qa_all": generate_qa_all,
+    "validate_qa_generation":validate_qa_generation})
    
 
 
