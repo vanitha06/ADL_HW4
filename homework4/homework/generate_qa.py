@@ -276,7 +276,7 @@ def get_image_filename(info_path: str, view_index: int) -> str:
     base_id = os.path.basename(info_path).replace('_info.json', '')
     
     # Format the index as two digits and append the image suffix
-    return f"{base_id}_{view_index:02d}_im.jpg"    
+    return f"train/{base_id}_{view_index:02d}_im.jpg"    
     
 def get_spatial_and_count_info(karts, ego_kart):
     """
