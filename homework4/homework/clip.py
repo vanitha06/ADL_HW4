@@ -102,7 +102,17 @@ class CLIP(nn.Module):
         self.vision_encoder = vision_encoder
         self.text_encoder = text_encoder
         # TODO: implement the rest components
-        raise NotImplementedError("Not implemented")
+        # Pull hidden sizes from the encoder configurations
+        vision_hidden_size = vision_encoder.config.hidden_size
+        text_hidden_size = text_encoder.config.hidden_size
+        
+        # 1) Define linear projections to shared space (proj_dim)
+        self.visual_projection = nn.Linear(vision_hidden_size, proj_dim, bias=False)
+        self.text_projection = nn.Linear(text_hidden_size, proj_dim, bias=False)
+        
+        # 2) Initialize t as the log of 1/temperature
+        # We use nn.Parameter so it is learned during training
+        self.t = nn.Parameter(torch.ones([]) * np.log(1 / temperature))
 
     def encode_image(self, image: torch.Tensor) -> torch.Tensor:
         return self.vision_encoder(image)
@@ -180,8 +190,35 @@ class CLIP(nn.Module):
         Returns:
             TODO: think about the what values should be returned
         """
-        raise NotImplementedError("Not implemented")
-
+        # --- Image Encoding ---
+        # Extract last_hidden_state from vision encoder
+        vision_outputs = self.vision_encoder(pixel_values=pixel_values)
+        vision_hidden = vision_outputs.last_hidden_state  # (B, Seq_Len, Vision_Hidden)
+        
+        # Average pooling across the sequence dimension (tokens)
+        image_f = vision_hidden.mean(dim=1)  # (B, Vision_Hidden)
+        
+        # Project and L2-normalize
+        image_p = self.visual_projection(image_f)
+        image_e = F.normalize(image_p, p=2, dim=-1)
+        
+        # --- Text Encoding ---
+        # Extract last_hidden_state from language model
+        text_outputs = self.text_encoder(input_ids=input_ids, attention_mask=attention_mask)
+        text_hidden = text_outputs.last_hidden_state  # (B, Seq_Len, Text_Hidden)
+        
+        # HINT: Get the first occurrence of EOS token (last non-padding token)
+        # Using attention_mask to find the index of the EOS token
+        eos_indices = attention_mask.sum(dim=1) - 1
+        batch_indices = torch.arange(text_hidden.shape[0], device=text_hidden.device)
+        text_f = text_hidden[batch_indices, eos_indices]  # (B, Text_Hidden)
+        
+        # Project and L2-normalize
+        text_p = self.text_projection(text_f)
+        text_e = F.normalize(text_p, p=2, dim=-1)
+        
+        # Return normalized embeddings and the exponentiated log-temperature
+        return image_e, text_e, self.t.exp()
 
 def compute_clip_loss(
     outputs: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
@@ -199,7 +236,28 @@ def compute_clip_loss(
     Returns:
         The loss for the CLIP model.
     """
-    raise NotImplementedError("Not implemented")
+    # Unpack forward() returns: image_e, text_e, and logit_scale (exp(t))
+    image_e, text_e, logit_scale = outputs
+    
+    # n is the batch size
+    n = image_e.shape[0]
+    device = image_e.device
+    
+    # Scaled pairwise cosine similarities [n, n]
+    # Row i: similarity of image i to all texts in the batch
+    # Col j: similarity of text j to all images in the batch
+    logits_per_image = torch.matmul(image_e, text_e.t()) * logit_scale
+    logits_per_text = logits_per_image.t()
+    
+    # The correct matches are on the diagonal (0, 1, 2, ... n-1)
+    ground_truth = torch.arange(n, device=device)
+    
+    # Cross entropy in both directions
+    loss_i = F.cross_entropy(logits_per_image, ground_truth)
+    loss_t = F.cross_entropy(logits_per_text, ground_truth)
+    
+    # Final symmetric loss
+    return (loss_i + loss_t) / 2
 
 
 def get_target_modules_for_lora(model: nn.Module) -> list[str]:
