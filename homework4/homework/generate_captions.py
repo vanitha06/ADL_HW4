@@ -63,7 +63,7 @@ def generate_caption(info_path: str, view_index: int, img_width: int = 150, img_
              "image_file": image_file,
              "caption": f"{name} is behind the ego car.",
         })
-    else:
+    elif ego_kart:
       captions.append({
              "image_file": image_file,
              "caption": f"There are 1 karts in the scene.",

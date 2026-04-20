@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Any
-
+import numpy as np
 import torch
 import torch.nn as nn
 import torchvision as tv
@@ -200,7 +200,7 @@ class CLIP(nn.Module):
         
         # Project and L2-normalize
         image_p = self.visual_projection(image_f)
-        image_e = F.normalize(image_p, p=2, dim=-1)
+        image_e = nn.functional.normalize(image_p, p=2, dim=-1)
         
         # --- Text Encoding ---
         # Extract last_hidden_state from language model
@@ -215,7 +215,7 @@ class CLIP(nn.Module):
         
         # Project and L2-normalize
         text_p = self.text_projection(text_f)
-        text_e = F.normalize(text_p, p=2, dim=-1)
+        text_e = nn.functional.normalize(text_p, p=2, dim=-1)
         
         # Return normalized embeddings and the exponentiated log-temperature
         return image_e, text_e, self.t.exp()
@@ -253,8 +253,8 @@ def compute_clip_loss(
     ground_truth = torch.arange(n, device=device)
     
     # Cross entropy in both directions
-    loss_i = F.cross_entropy(logits_per_image, ground_truth)
-    loss_t = F.cross_entropy(logits_per_text, ground_truth)
+    loss_i = nn.functional.cross_entropy(logits_per_image, ground_truth)
+    loss_t = nn.functional.cross_entropy(logits_per_text, ground_truth)
     
     # Final symmetric loss
     return (loss_i + loss_t) / 2
