@@ -37,10 +37,11 @@ def generate_caption(info_path: str, view_index: int, img_width: int = 150, img_
              "image_file": image_file,
              "caption": f"There are {len(karts)} karts in the scene.",
         })
-     kart_names = [obj['name'] for obj in spatial_data] 
+     kart_names = [obj['name'] for obj in spatial_data]
+     kart_names.append(ego_kart['kart_name']) 
      captions.append({
              "image_file": image_file,
-             "caption": f"The karts in the scene are {kart_names}.",
+             "caption": f"The karts in the scene are {', '.join(kart_names)}.",
         })
 
 
