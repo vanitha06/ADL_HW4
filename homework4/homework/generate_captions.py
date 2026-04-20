@@ -30,6 +30,7 @@ def generate_caption(info_path: str, view_index: int, img_width: int = 150, img_
              "image_file": image_file,
              "caption": f"The track is {track_id}.",
         })
+
      # Get data from our helper
     if len(karts) > 0:
      spatial_data, counts = get_spatial_and_count_info(karts, ego_kart)
@@ -43,7 +44,6 @@ def generate_caption(info_path: str, view_index: int, img_width: int = 150, img_
              "image_file": image_file,
              "caption": f"The karts in the scene are {', '.join(kart_names)}.",
         })
-
 
      for data in spatial_data:
         name = data['name']
@@ -63,7 +63,15 @@ def generate_caption(info_path: str, view_index: int, img_width: int = 150, img_
              "image_file": image_file,
              "caption": f"{name} is {v_rel} the ego car.",
         })
-
+    else:
+      captions.append({
+             "image_file": image_file,
+             "caption": f"There are 1 karts in the scene.",
+        })
+      captions.append({
+             "image_file": image_file,
+             "caption": f"The karts in the scene are {ego_kart['kart_name']}.",
+        })
 
     # 1. Ego car
     # {kart_name} is the ego car.
@@ -130,7 +138,7 @@ def generate_captions_all(data_dir: str = 'data/valid'):
     return all_captions_pairs 
 
 
-def verify_captions(generated_json_path, qa_json_path):
+def verify_captions(generated_json_path='data/valid/generated_captions.json', qa_json_path='data/valid_grader/all_mc_qas.json'):
     """
     Checks if the generated captions match the correct candidates in the QA file.
     """
@@ -149,7 +157,7 @@ def verify_captions(generated_json_path, qa_json_path):
         item['image_file']: item['candidates'][item['correct_index']] 
         for item in qa_list
     }
-
+    print("qa_map",qa_map)
     matches = 0
     mismatches = 0
     missing = 0
