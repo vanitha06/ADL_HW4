@@ -7,7 +7,7 @@ import glob
 import json
 
 from .generate_qa import draw_detections, extract_frame_info,extract_kart_objects,extract_track_info,get_spatial_and_count_info,get_image_filename
-
+from collections import defaultdict
 
 def generate_caption(info_path: str, view_index: int, img_width: int = 150, img_height: int = 100) -> list:
     """
@@ -61,7 +61,7 @@ def generate_caption(info_path: str, view_index: int, img_width: int = 150, img_
         elif v_rel == 'back':
              captions.append({
              "image_file": image_file,
-             "caption": f"{name} is {v_rel} the ego car.",
+             "caption": f"{name} is behind the ego car.",
         })
     else:
       captions.append({
@@ -93,7 +93,7 @@ def generate_caption(info_path: str, view_index: int, img_width: int = 150, img_
 
     return captions
 
-def generate_captions_all(data_dir: str = 'data/valid'):
+def generate_captions_all(data_dir: str = 'data/train'):
     """
     Iterates through all info.json files in the directory and calls 
     generate_qa_pairs for each of the 10 kart views.
@@ -140,63 +140,64 @@ def generate_captions_all(data_dir: str = 'data/valid'):
 
 def verify_captions(generated_json_path='data/valid/generated_captions.json', qa_json_path='data/valid_grader/all_mc_qas.json'):
     """
-    Checks if the generated captions match the correct candidates in the QA file.
+    Groups flat records by image_file and checks if the correct QA answer
+    is present in any of the associated captions.
     """
-    # Load the files
-    try:
-        with open(generated_json_path, 'r') as f:
-            generated_list = json.load(f)
-        with open(qa_json_path, 'r') as f:
-            qa_list = json.load(f)
-    except FileNotFoundError as e:
-        return f"Error: {e}"
+    with open(generated_json_path, 'r') as f:
+        generated_data = json.load(f)
+    with open(qa_json_path, 'r') as f:
+        qa_data = json.load(f)
 
-    # 1. Map image paths to the correct answer for O(1) lookup
-    # We use the correct_index to grab the right string from candidates
-    qa_map = {
-        item['image_file']: item['candidates'][item['correct_index']] 
-        for item in qa_list
+    # 1. Group generated captions by image_file
+    # Result: { "img1.jpg": ["caption1", "caption2", ...], "img2.jpg": [...] }
+    grouped_gen = defaultdict(list)
+    for record in generated_data:
+        img = record['image_file']
+        cap = str(record['caption']).strip().lower().rstrip('.')
+        grouped_gen[img].append(cap)
+
+    # 2. Map QA image_file to the correct ground truth string
+    qa_lookup = {
+        item['image_file']: item['candidates'][item['correct_index']].strip().lower().rstrip('.')
+        for item in qa_data
     }
-    print("qa_map",qa_map)
-    matches = 0
-    mismatches = 0
-    missing = 0
 
-    print(f"{'Image File':<30} | {'Status'}")
-    print("-" * 50)
+    success_count = 0
+    mismatch_count = 0
 
-    for entry in generated_list:
-        img_path = entry.get('image_file')
-        # Normalize: strip spaces and lowercase to prevent "fake" mismatches
-        gen_caption = str(entry.get('caption', '')).strip().lower()
+    print(f"{'Image File':<30} | Status")
+    print("-" * 55)
 
-        if img_path in qa_map:
-            target_caption = str(qa_map[img_path]).strip().lower()
-            
-            if gen_caption == target_caption:
-                matches += 1
-            else:
-                mismatches += 1
-                print(f"{img_path:<30} | FAIL")
-                print(f"  [Gen]: {gen_caption}")
-                print(f"  [Exp]: {target_caption}")
+    # 3. Compare the QA ground truth against the grouped generated list
+    for img_path, target_gt in qa_lookup.items():
+        # Get all captions we generated for this specific image
+        generated_caps = grouped_gen.get(img_path, [])
+
+        if not generated_caps:
+            print(f"{img_path:<30} | MISSING IN GENERATED FILE")
+            continue
+
+        if target_gt in generated_caps:
+            success_count += 1
+            # print(f"{img_path:<30} | MATCH FOUND")
         else:
-            missing += 1
-            print(f"{img_path:<30} | NOT FOUND IN QA")
+            mismatch_count += 1
+            print(f"{img_path:<30} | !!! NO MATCH !!!")
+            print(f"   Expected Target: '{target_gt}'")
+            print(f"   Generated were:  {generated_caps}")
 
-    # Final Report
-    total = len(generated_list)
-    accuracy = (matches / total) * 100 if total > 0 else 0
+    # Summary
+    total_images = len(qa_lookup)
+    print("-" * 55)
+    print(f"Validation Results for {total_images} unique images:")
+    print(f"Success (At least one match): {success_count}")
+    print(f"Fail (No match found):        {mismatch_count}")
     
-    print("-" * 50)
-    print(f"Total Processed: {total}")
-    print(f"Matches:         {matches}")
-    print(f"Mismatches:      {mismatches}")
-    print(f"Missing in QA:   {missing}")
-    print(f"Accuracy:        {accuracy:.2f}%")
-    
-    return {"matches": matches, "mismatches": mismatches, "accuracy": accuracy}
+    accuracy = (success_count / total_images) * 100 if total_images > 0 else 0
+    print(f"Final Accuracy: {accuracy:.2f}%")
 
+# Run it
+# verify_flat_list_captions('generate_captions.json', 'all_mc_qas.json')
 # Example Usage:
 # results = verify_captions('generate_captions.json', 'all_mc_qas.json')
 
