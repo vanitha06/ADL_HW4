@@ -85,7 +85,7 @@ def generate_caption(info_path: str, view_index: int, img_width: int = 150, img_
 
     return captions
 
-def generate_captions_all(data_dir: str = 'data/train'):
+def generate_captions_all(data_dir: str = 'data/valid'):
     """
     Iterates through all info.json files in the directory and calls 
     generate_qa_pairs for each of the 10 kart views.
@@ -130,6 +130,68 @@ def generate_captions_all(data_dir: str = 'data/train'):
     return all_captions_pairs 
 
 
+def verify_captions(generated_json_path, qa_json_path):
+    """
+    Checks if the generated captions match the correct candidates in the QA file.
+    """
+    # Load the files
+    try:
+        with open(generated_json_path, 'r') as f:
+            generated_list = json.load(f)
+        with open(qa_json_path, 'r') as f:
+            qa_list = json.load(f)
+    except FileNotFoundError as e:
+        return f"Error: {e}"
+
+    # 1. Map image paths to the correct answer for O(1) lookup
+    # We use the correct_index to grab the right string from candidates
+    qa_map = {
+        item['image_file']: item['candidates'][item['correct_index']] 
+        for item in qa_list
+    }
+
+    matches = 0
+    mismatches = 0
+    missing = 0
+
+    print(f"{'Image File':<30} | {'Status'}")
+    print("-" * 50)
+
+    for entry in generated_list:
+        img_path = entry.get('image_file')
+        # Normalize: strip spaces and lowercase to prevent "fake" mismatches
+        gen_caption = str(entry.get('caption', '')).strip().lower()
+
+        if img_path in qa_map:
+            target_caption = str(qa_map[img_path]).strip().lower()
+            
+            if gen_caption == target_caption:
+                matches += 1
+            else:
+                mismatches += 1
+                print(f"{img_path:<30} | FAIL")
+                print(f"  [Gen]: {gen_caption}")
+                print(f"  [Exp]: {target_caption}")
+        else:
+            missing += 1
+            print(f"{img_path:<30} | NOT FOUND IN QA")
+
+    # Final Report
+    total = len(generated_list)
+    accuracy = (matches / total) * 100 if total > 0 else 0
+    
+    print("-" * 50)
+    print(f"Total Processed: {total}")
+    print(f"Matches:         {matches}")
+    print(f"Mismatches:      {mismatches}")
+    print(f"Missing in QA:   {missing}")
+    print(f"Accuracy:        {accuracy:.2f}%")
+    
+    return {"matches": matches, "mismatches": mismatches, "accuracy": accuracy}
+
+# Example Usage:
+# results = verify_captions('generate_captions.json', 'all_mc_qas.json')
+
 def check_caption(info_file: str, view_index: int):
     captions = generate_caption(info_file, view_index)
 
@@ -161,7 +223,7 @@ You probably need to add additional commands to Fire below.
 
 
 def main():
-    fire.Fire({"check": check_caption,"generate_caption":generate_caption,"generate_caption_all":generate_captions_all})
+    fire.Fire({"verify":verify_captions,"check": check_caption,"generate_caption":generate_caption,"generate_caption_all":generate_captions_all})
 
 
 if __name__ == "__main__":
